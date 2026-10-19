@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gluon cluster usage</title>
+<meta name="description" content="Per-user CPU, memory, login and Slurm usage on the gluon node of the mathematica Slurm cluster, anonymised.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='9' width='3' height='6' rx='1' fill='%232a78d6'/%3E%3Crect x='6.5' y='5' width='3' height='10' rx='1' fill='%232a78d6'/%3E%3Crect x='12' y='1' width='3' height='14' rx='1' fill='%232a78d6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"
+        integrity="sha512-WoViKhKD4qI2WruSZqv9+kvM4WfFhUMQCLN4QlDTt5aU56fLQy2gYoxWIqlEnXqJy/+Ac5q/hk1oWfqnMDhwMA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+<header class="wrap">
+  <div class="title-row">
+    <div>
+      <h1>Gluon cluster usage</h1>
+      <p class="sub">Who uses the <b>gluon</b> node of the <b>mathematica</b> Slurm cluster, per anonymised user.
+        Users are shown as letters; <i>other users</i> groups everyone outside the six largest, and <i>system</i> covers root, daemons and service accounts.</p>
+    </div>
+    <div class="theme" role="group" aria-label="Theme">
+      <button data-set-theme="auto" aria-pressed="true">Auto</button>
+      <button data-set-theme="light" aria-pressed="false">Light</button>
+      <button data-set-theme="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+  <p class="stamp">Last updated <time id="updated">…</time>. Sampled every minute since <span id="since">…</span>.
+    <a href="https://github.com/MindaugasSarpis/cluster-usage#readme">How this is measured</a></p>
+</header>
+
+<main class="wrap">
+  <section class="tiles" id="tiles" aria-label="Last 24 hours"></section>
+
+  <div class="filters" role="group" aria-label="Time range">
+    <span class="filters-label">Range</span>
+    <button data-range="hourly" aria-pressed="true">Last 7 days, hourly</button>
+    <button data-range="daily" aria-pressed="false">Every day, daily</button>
+  </div>
+
+  <section class="card">
+    <h2>CPU-hours per user</h2>
+    <p class="note" data-note-cpu></p>
+    <div class="chart"><canvas id="c-cpu"></canvas></div>
+    <details><summary>Table</summary><div class="table" id="t-cpu"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Memory per user</h2>
+    <p class="note">Average resident memory (RSS) of each user's processes, in GiB. Shared pages count once per process, so this overstates memory for programs that share a lot.</p>
+    <div class="chart"><canvas id="c-mem"></canvas></div>
+    <details><summary>Table</summary><div class="table" id="t-mem"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Load against cores in use</h2>
+    <p class="note">Cores in use is CPU time actually burned. Load average also counts tasks waiting on disk or NFS, which is why it sits far above the cores in use here.</p>
+    <div class="chart"><canvas id="c-load"></canvas></div>
+    <details><summary>Table</summary><div class="table" id="t-load"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Utilisation</h2>
+    <p class="note">Cores in use as a share of the <span data-ncpu>…</span> cores on gluon.</p>
+    <div class="chart short"><canvas id="c-util"></canvas></div>
+    <details><summary>Table</summary><div class="table" id="t-util"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>Slurm CPUs allocated per user</h2>
+    <p class="note">Average CPUs held by running Slurm jobs, from <code>squeue</code>. Allocated is not the same as used: compare with the CPU-hours chart.</p>
+    <div class="chart"><canvas id="c-slurm"></canvas></div>
+    <details><summary>Table (with running and pending jobs)</summary><div class="table" id="t-slurm"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>When is gluon busy?</h2>
+    <p class="note">Average cores in use by hour of the week, over every sampled hour (<span id="heat-days">…</span>). Times are gluon's local time.</p>
+    <div id="heat" class="heat"></div>
+    <details><summary>Table</summary><div class="table" id="t-heat"></div></details>
+  </section>
+
+  <h2 class="part">Bootstrap datasets <span class="badge">from before the sampler</span></h2>
+  <p class="note wide">The sampler only sees what happens while it runs. These two sources reach further back, but measure different things.</p>
+
+  <section class="card">
+    <h2>Hours logged in per user, per month</h2>
+    <p class="note">From the system login records (wtmp), since <span id="wtmp-first">…</span>. Hours with at least one SSH or console session open; overlapping sessions count once. Being logged in is not the same as computing.</p>
+    <div class="chart"><canvas id="c-login"></canvas></div>
+    <details><summary>Table (every user)</summary><div class="table" id="t-login"></div></details>
+  </section>
+
+  <section class="card">
+    <h2>CPU-hours since the last boot</h2>
+    <p class="note">Snapshot of the kernel's cgroup counters on <span id="boot-snap">…</span>, covering everything since gluon booted on <span id="boot-date">…</span>.
+      Only users with a session open right now have their own counter; Slurm jobs are counted together, not per user.</p>
+    <div class="chart short"><canvas id="c-boot"></canvas></div>
+    <details><summary>Table</summary><div class="table" id="t-boot"></div></details>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Source and method: <a href="https://github.com/MindaugasSarpis/cluster-usage">github.com/MindaugasSarpis/cluster-usage</a>. Charts: Chart.js 4.5.1.</p>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
