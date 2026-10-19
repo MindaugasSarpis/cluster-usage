@@ -46,12 +46,17 @@ reused PID is not mistaken for the old process. A process that started and
 ended between two samples is never seen directly, but its CPU time is added to
 its parent's `cutime + cstime` when the parent collects it. The sampler credits
 that growth to the parent's user, after subtracting what it already counted for
-that user's processes that disappeared. Root is left out of this
-correction, because root collects the processes of every user (Slurm job steps,
-orphans) and would otherwise count them twice. The result is checked against
-`/proc/stat` on every sample: the *attributed* column in the load table shows
-how much of the machine's busy CPU was assigned to a user. In testing the two
-agreed to within 1 %.
+that user's processes that disappeared. Root processes collect the processes
+of every user, so they get two narrower rules instead: a root process whose
+children all belong to one user (such as `slurmstepd` under a job) passes its
+surplus to that user; and init (pid 1), which collects orphans, splits its
+surplus between the owners of the orphans that vanished, in proportion to what
+each had used. The result is checked against `/proc/stat` on every sample: the
+*attributed* column in the load table shows how much of the machine's busy CPU
+was assigned to a user. In a test of eight one-minute intervals, seven agreed
+to within 0.2 cores and one fell 2 cores (9 %) short; the remainder is work
+that started and ended between two samples in a way none of the rules can
+trace.
 
 **Memory per user** is the sum of RSS over that user's processes. Pages shared
 between processes count once per process, so the figure is an upper bound.

@@ -131,6 +131,44 @@ def cpu_ticks_by_uid(prev, procs):
         # double count them, so only non-root users get the reaped-child credit.
         if uid != 0 and extra > 0:
             ticks[uid] = ticks.get(uid, 0) + extra
+    # A root process other than init whose children all belong to one user (such
+    # as slurmstepd under a job) passes on what it reaped beyond the children
+    # already counted: work that started and ended between two scans.
+    kids, reaped = {}, {}
+    for scan in (prev, procs):
+        for p in scan.values():
+            kids.setdefault(p[2], set()).add(p[1])
+    for pid, old in prev.items():
+        p = procs.get(pid)
+        if p is None or p[0] != old[0]:
+            reaped[old[2]] = reaped.get(old[2], 0) + old[3] + old[4]
+    for pid, p in procs.items():
+        users = kids.get(pid, ())
+        if p[1] != 0 or pid == 1 or len(users) != 1 or 0 in users:
+            continue
+        old = prev.get(pid)
+        d_child = p[4] - old[4] if old and old[0] == p[0] else p[4]
+        extra = d_child - reaped.get(pid, 0)
+        if extra > 0:
+            uid = next(iter(users))
+            ticks[uid] = ticks.get(uid, 0) + extra
+    # init reaps orphans: vanished processes whose parent was init or is gone too.
+    # Beyond what was already counted for them, its cutime growth is their final
+    # stretch of work; split it between their owners by what each had used.
+    init, old_init = procs.get(1), prev.get(1)
+    if init and old_init and init[0] == old_init[0]:
+        orphans = {}
+        for pid, old in prev.items():
+            p = procs.get(pid)
+            parent = procs.get(old[2])
+            gone_parent = parent is None or parent[0] != prev.get(old[2], (None,))[0]
+            if (p is None or p[0] != old[0]) and (old[2] == 1 or gone_parent):
+                orphans[old[1]] = orphans.get(old[1], 0) + old[3] + old[4]
+        counted = sum(orphans.values())
+        extra = init[4] - old_init[4] - counted
+        if extra > 0 and counted > 0:
+            for uid, used in orphans.items():
+                ticks[uid] = ticks.get(uid, 0) + extra * used / counted
     return ticks
 
 
